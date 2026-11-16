@@ -1,0 +1,300 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Billing Service — Workshop OS",
+        "description": "Orçamentos e pagamentos (Mercado Pago). Fase 4: chamado via Traefik, que autentica no OS Service (ForwardAuth) e repassa X-User-Id/X-User-Role/X-User-Client-Id.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8000",
+            "description": "Gateway (Traefik)"
+        }
+    ],
+    "paths": {
+        "/api/v1/budgets": {
+            "get": {
+                "tags": [
+                    "Budgets"
+                ],
+                "summary": "Lista orçamentos (cliente vê só os seus)",
+                "operationId": "16bc7ee7e106232d0f2c64408f014c17",
+                "parameters": [
+                    {
+                        "name": "service_order_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Orçamentos"
+                    },
+                    "401": {
+                        "description": "Sem identidade do gateway"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/budgets/{id}": {
+            "get": {
+                "tags": [
+                    "Budgets"
+                ],
+                "summary": "Exibe orçamento com linhas",
+                "operationId": "f4dcc400980992554b812757727a5c55",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Orçamento"
+                    },
+                    "403": {
+                        "description": "Orçamento de outro cliente"
+                    },
+                    "404": {
+                        "description": "Não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/budgets/{id}/approve": {
+            "post": {
+                "tags": [
+                    "Budgets"
+                ],
+                "summary": "Cliente aprova o orçamento (dispara evt.billing.budget_approved para a saga)",
+                "operationId": "939df9eeece10bdcd38e11cccac435ca",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Aprovado"
+                    },
+                    "422": {
+                        "description": "Orçamento não está pendente"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/budgets/{id}/reject": {
+            "post": {
+                "tags": [
+                    "Budgets"
+                ],
+                "summary": "Cliente rejeita o orçamento (a saga cancela a OS)",
+                "operationId": "cd107f4b5eab52160db65031e91957a4",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Rejeitado"
+                    },
+                    "422": {
+                        "description": "Orçamento não está pendente"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/payments/offline/{reference}/approve": {
+            "get": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Somente PAYMENT_GATEWAY=offline: simula o comprador pagando no provedor",
+                "operationId": "a02c1a59193923334e7621cff4839ed4",
+                "parameters": [
+                    {
+                        "name": "reference",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Marcado como pago no provedor simulado"
+                    },
+                    "404": {
+                        "description": "Gateway não é offline ou referência desconhecida"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/payments": {
+            "get": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Lista pagamentos (cliente vê só os seus); inclui checkout_url do Mercado Pago",
+                "operationId": "e8d0c8549aa2ea8bba8769dd1925862f",
+                "parameters": [
+                    {
+                        "name": "service_order_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Pagamentos"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/payments/{id}": {
+            "get": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Exibe pagamento",
+                "operationId": "cee2ed990e61e051048ff307e0b53a61",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Pagamento"
+                    },
+                    "403": {
+                        "description": "De outro cliente"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/payments/{id}/verify": {
+            "post": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Consulta o Mercado Pago agora (o job payments:verify faz o mesmo a cada minuto)",
+                "operationId": "d6548facfcfe2e4b16a03c45d90ad863",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Status após a verificação; confirmed=true quando aprovou agora"
+                    }
+                },
+                "security": [
+                    {
+                        "gateway": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "gateway": {
+                "type": "http",
+                "description": "Token do OS Service (Sanctum ou JWT do Lambda), validado pelo gateway",
+                "scheme": "bearer"
+            },
+            "sanctum": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "Token",
+                "description": "Informe o token Sanctum: Bearer {token}"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Budgets",
+            "description": "Orçamentos gerados pela saga após o diagnóstico"
+        },
+        {
+            "name": "Payments",
+            "description": "Pagamentos via Mercado Pago (Checkout Pro, verificação por polling)"
+        }
+    ]
+}

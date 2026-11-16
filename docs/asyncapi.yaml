@@ -1,0 +1,39 @@
+asyncapi: 3.0.0
+info:
+  title: Billing Service — saga replies and events
+  version: 1.0.0
+  description: |
+    Messages the Billing Service publishes. Envelope and routing rules:
+    15SOAT-Fase1 docs/asyncapi.yaml (ADR-011). saga_id/correlation_id are
+    echoed from the command (or from the stored budget/payment).
+defaultContentType: application/json
+channels:
+  workshop:
+    address: workshop
+    messages:
+      budgetCreated:
+        name: evt.billing.budget_created
+        summary: Reply to cmd.billing.create_budget. Payload {service_order_id, budget_id, total}.
+      budgetCreationFailed:
+        name: evt.billing.budget_creation_failed
+        summary: Reply when the budget has no lines or total <= 0. Payload {service_order_id, reason}.
+      budgetApproved:
+        name: evt.billing.budget_approved
+        summary: Client approved via POST /api/v1/budgets/{id}/approve. Payload {service_order_id, budget_id}.
+      budgetRejected:
+        name: evt.billing.budget_rejected
+        summary: Client rejected via POST /api/v1/budgets/{id}/reject. Payload {service_order_id, budget_id}.
+      paymentRequested:
+        name: evt.billing.payment_requested
+        summary: Reply to cmd.billing.request_payment. Payload {service_order_id, payment_id, checkout_url, provider}.
+      paymentConfirmed:
+        name: evt.billing.payment_confirmed
+        summary: Mercado Pago reported the payment approved (polling). Payload {service_order_id, payment_id, provider_payment_id, amount}.
+operations:
+  publishBillingEvents:
+    action: send
+    channel: { $ref: '#/channels/workshop' }
+  consumeBillingCommands:
+    action: receive
+    channel: { $ref: '#/channels/workshop' }
+    description: Binds billing.inbox to cmd.billing.* (create_budget, void_budget, request_payment).
