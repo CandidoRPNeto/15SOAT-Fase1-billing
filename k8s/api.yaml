@@ -1,0 +1,67 @@
+# API HTTP do Billing Service. O CMD da imagem é sobrescrito: aqui só cacheia
+# config, gera o Swagger e serve — a migração roda no Job (jobs/migrate.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-api
+  template:
+    metadata:
+      labels:
+        app: billing-api
+        tags.datadoghq.com/service: billing-service
+    spec:
+      containers:
+        - name: app
+          image: billing-service
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "php artisan config:cache && php artisan l5-swagger:generate && php artisan serve --host=0.0.0.0 --port=8000"]
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: billing-config }
+            - secretRef: { name: billing-secret }
+          readinessProbe:
+            httpGet: { path: /up, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /up, port: 8000 }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "100m", memory: "192Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-api
+spec:
+  selector:
+    app: billing-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+# Requer metrics-server (já instalado no kind workshop-os, ver infra/README.md).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: billing-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: billing-api
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

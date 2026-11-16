@@ -1,58 +1,85 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 15SOAT-Fase1-billing — Billing Service
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Microsserviço de **orçamentos e pagamentos** da Workshop OS (Fase 4 — SOAT/FIAP).
 
-## About Laravel
+- Gera o orçamento quando a saga pede (`cmd.billing.create_budget`) e o envia para aprovação do cliente.
+- Registra a aprovação ou rejeição (`POST /api/v1/budgets/{id}/approve|reject`) e publica `evt.billing.budget_*`.
+- Abre o pagamento no **Mercado Pago** (Checkout Pro, credenciais de teste) e confirma por polling (`payments:verify`).
+- A confirmação atualiza a OS via `evt.billing.payment_confirmed`.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Arquitetura geral, saga e decisões: repo
+[15SOAT-Fase1](https://github.com/CandidoRPNeto/15SOAT-Fase1) (RFC-004, ADR-010..015).
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Arquitetura do serviço
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```mermaid
+flowchart LR
+    GW["Traefik<br/>ForwardAuth"] -->|"X-User-*"| API["billing-api<br/>BudgetController · PaymentController"]
+    API --> DB[("PostgreSQL<br/>budgets · budget_lines · payments<br/>outbox · processed_messages")]
+    W["billing-worker<br/>bus:work"] --> DB
+    S["scheduler<br/>payments:verify"] --> DB
+    W <-->|"cmd.billing.* / evt.billing.*"| MQ{{RabbitMQ}}
+    S -->|"busca pagamento"| MP[["Mercado Pago API"]]
+    W -->|"cria preferência"| MP
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+| Camada | Conteúdo |
+|---|---|
+| `app/Domain/Billing` | `BillingMessage`, `BudgetStatus`, `PaymentStatus` |
+| `app/Application/Billing` | `CreateBudget`, `VoidBudget` (compensação), `RequestPayment`, `DecideBudget`, `VerifyPayment`, `BillingMessageRouter` |
+| `app/Application/Ports` | `PaymentGateway`, `MessagePublisher`, `MessageConsumer`, `MessageRouter` |
+| `app/Infrastructure` | `MercadoPagoPaymentGateway`, `OfflinePaymentGateway`, adapters RabbitMQ |
 
-## Contributing
+Contrato das mensagens: [`docs/asyncapi.yaml`](docs/asyncapi.yaml).
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Tecnologias
 
-## Code of Conduct
+Laravel 13 · PHP 8.4 · PostgreSQL 16 · RabbitMQ (php-amqplib) · Mercado Pago REST API · L5-Swagger · Datadog APM · Docker · Kubernetes (kind) · GitHub Actions · SonarCloud.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Executar
 
-## Security Vulnerabilities
+```bash
+composer install && cp .env.example .env && php artisan key:generate
+php artisan test                              # SQLite :memory:, PAYMENT_GATEWAY=offline
+RABBITMQ_TEST_HOST=127.0.0.1 php artisan test # + integração com RabbitMQ real
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Deploy no Kubernetes (cluster kind; plataforma em
+[15SOAT-Fase1-kubernetes](https://github.com/CandidoRPNeto/15SOAT-Fase1-kubernetes)):
 
-## License
+```bash
+export KUBECONFIG=~/.kube/workshop-os-config
+scripts/deploy-kind.sh ghcr.io/candidorpneto/15soat-fase1-billing:<tag>
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Manifests: `k8s/` (namespace `billing`):
+- `billing-api` + HPA;
+- `billing-worker` (`bus:work` + `schedule:work`);
+- StatefulSet `billing-postgres`;
+- Job `billing-migrate`;
+- Ingress com ForwardAuth.
+
+Mercado Pago:
+- coloque `MERCADOPAGO_ACCESS_TOKEN=TEST-...` em `~/.workshop-os/secrets/billing.env`;
+- defina `PAYMENT_GATEWAY=mercadopago`;
+- rode `scripts/bootstrap-secrets.sh` (repo kubernetes);
+- **nunca commite o token**.
+
+## CI/CD
+
+`.github/workflows/ci-cd.yml`:
+1. **test** — PHPUnit, cobertura ≥ 80%, RabbitMQ real;
+2. **quality** — Pint + SonarCloud quality gate;
+3. **build** — imagem no GHCR;
+4. **deploy** — runner self-hosted → kind, só em push na `main`.
+
+A `main` é protegida: PR obrigatório e checks `test` e `quality`.
+
+## API
+
+- Swagger: http://localhost:30080/billing/api/documentation
+- Rotas (via gateway, com token do OS Service): `GET /api/v1/budgets`, `GET /api/v1/budgets/{id}`, `POST /api/v1/budgets/{id}/approve|reject`, `GET /api/v1/payments`, `GET /api/v1/payments/{id}`, `POST /api/v1/payments/{id}/verify`.
+
+## Cobertura
+
+Local, sem broker: ~85%. No CI, com RabbitMQ, os adapters também são cobertos. Relatório: artefato `coverage` de cada execução do workflow e SonarCloud.

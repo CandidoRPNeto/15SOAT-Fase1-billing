@@ -1,0 +1,43 @@
+# Processos assíncronos do Billing:
+# - bus-worker: relay do outbox + consumo de cmd.billing.* (orçamento, anulação, pagamento).
+# - scheduler: payments:verify a cada minuto (polling do Mercado Pago).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-worker
+  template:
+    metadata:
+      labels:
+        app: billing-worker
+        tags.datadoghq.com/service: billing-service
+    spec:
+      containers:
+        - name: bus-worker
+          image: billing-service
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "php artisan config:cache && exec php artisan bus:work --poll=1"]
+          envFrom:
+            - configMapRef: { name: billing-config }
+            - secretRef: { name: billing-secret }
+          env:
+            - { name: DD_TRACE_CLI_ENABLED, value: "true" }
+            - { name: DD_TRACE_GENERATE_ROOT_SPAN, value: "false" }
+            - { name: DD_TRACE_AUTO_FLUSH_ENABLED, value: "true" }
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "300m", memory: "256Mi" }
+        - name: scheduler
+          image: billing-service
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "php artisan config:cache && exec php artisan schedule:work"]
+          envFrom:
+            - configMapRef: { name: billing-config }
+            - secretRef: { name: billing-secret }
+          resources:
+            requests: { cpu: "20m", memory: "96Mi" }
+            limits: { cpu: "200m", memory: "192Mi" }
