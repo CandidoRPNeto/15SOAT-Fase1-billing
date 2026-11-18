@@ -7,11 +7,15 @@ use App\Application\Ports\MessageConsumer;
 use App\Application\Ports\MessagePublisher;
 use App\Application\Ports\MessageRouter;
 use App\Application\Ports\PaymentGateway;
+use App\Application\Ports\TraceContext;
 use App\Infrastructure\Messaging\RabbitMq\RabbitMqConnectionFactory;
 use App\Infrastructure\Messaging\RabbitMq\RabbitMqMessageConsumer;
 use App\Infrastructure\Messaging\RabbitMq\RabbitMqMessagePublisher;
 use App\Infrastructure\Payments\MercadoPagoPaymentGateway;
 use App\Infrastructure\Payments\OfflinePaymentGateway;
+use App\Infrastructure\Tracing\DatadogTraceContext;
+use App\Infrastructure\Tracing\NullTraceContext;
+use App\Infrastructure\Tracing\ServeCommandTracerEnv;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 
@@ -23,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(MessageRouter::class, BillingMessageRouter::class);
         $this->app->singleton(MessagePublisher::class, RabbitMqMessagePublisher::class);
         $this->app->singleton(MessageConsumer::class, RabbitMqMessageConsumer::class);
+        $this->app->singleton(TraceContext::class, fn () => DatadogTraceContext::available() ? new DatadogTraceContext : new NullTraceContext);
         $this->app->singleton(PaymentGateway::class, fn () => $this->paymentGateway((string) config('payments.gateway')));
     }
 
@@ -35,5 +40,8 @@ class AppServiceProvider extends ServiceProvider
         };
     }
 
-    public function boot(): void {}
+    public function boot(): void
+    {
+        ServeCommandTracerEnv::passThrough();
+    }
 }
