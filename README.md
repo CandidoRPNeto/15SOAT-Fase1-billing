@@ -1,5 +1,7 @@
 # 15SOAT-Fase1-billing — Billing Service
 
+[![CI/CD](https://github.com/CandidoRPNeto/15SOAT-Fase1-billing/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/CandidoRPNeto/15SOAT-Fase1-billing/actions/workflows/ci-cd.yml)
+
 Microsserviço de **orçamentos e pagamentos** da Workshop OS (Fase 4 — SOAT/FIAP).
 
 - Gera o orçamento quando a saga pede (`cmd.billing.create_budget`) e o envia para aprovação do cliente.
@@ -82,4 +84,11 @@ A `main` é protegida: PR obrigatório e checks `test` e `quality`.
 
 ## Cobertura
 
-Local, sem broker: ~85%. No CI, com RabbitMQ, os adapters também são cobertos. Relatório: artefato `coverage` de cada execução do workflow e SonarCloud.
+Medida no CI: job `test`, PHPUnit + pcov, RabbitMQ real, gate `--min=80`.
+
+| Execução | Testes | Cobertura |
+|---|---|---|
+| [CI/CD run 44128010236 (main)](https://github.com/CandidoRPNeto/15SOAT-Fase1-billing/actions/runs/44128010236) | 50 (136 assertions) | **99,3%** |
+
+- Relatório Clover: artefato `coverage` da execução.
+- Local, sem broker, os adapters RabbitMQ ficam de fora: ~85%.
